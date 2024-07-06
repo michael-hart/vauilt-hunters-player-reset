@@ -21,7 +21,6 @@ public class PlayerReset
     {
         FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
         MinecraftForge.EVENT_BUS.addListener(EventPriority.NORMAL, this::onCommandRegister);
-        ModCommands.registerArgumentTypes();
     }
 
     private void setup(final FMLCommonSetupEvent event)

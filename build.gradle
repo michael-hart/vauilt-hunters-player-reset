@@ -33,7 +33,7 @@ minecraft {
             workingDirectory project.file('run')
 
             property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
+            property 'forge.logging.console.level', 'info'
 
             property 'forge.enabledGameTestNamespaces', 'playerreset'
 
@@ -98,16 +98,28 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
     maven {
-        name = 'tterrag maven'
-        url = 'https://maven.tterrag.com/'
+        // location of the maven that hosts JEI files since January 2023
+        // location of the maven for Vazkii's mods
+        name = "Jared's maven"
+        url = "https://maven.blamejared.com/"
     }
 
-    maven { url "https://www.cursemaven.com" }
+    maven {
+        url "https://www.cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
+
+    mavenLocal()
 }
 
 dependencies {
     minecraft 'net.minecraftforge:forge:1.18.2-40.2.9'
-    compileOnly fg.deobf("curse.maven:vault-hunters-official-mod-458203:5413414")
+    implementation fg.deobf("curse.maven:vault-hunters-official-mod-458203:5413414")
+    compileOnly fg.deobf("mezz.jei:jei-1.18.2:9.7.0.209:api")
+    runtimeOnly fg.deobf("mezz.jei:jei-1.18.2:9.7.0.209")
+
 }
 
 // Example for how to get properties into the manifest for reading at runtime.
@@ -124,8 +136,6 @@ jar {
         ])
     }
 }
-
-jar.finalizedBy('reobfJar')
 
 publishing {
     publications {

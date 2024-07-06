@@ -1,5 +1,11 @@
 package net.gargoyle.playerreset.commands;
 
+import net.minecraft.gametest.framework.GameTest;
+
 public class PlayerResetTest {
-//    TODO get some unit tests going!
+    @GameTest
+    public void testTrueIsFalse() {
+
+    }
+
 }
