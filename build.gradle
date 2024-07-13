@@ -3,17 +3,20 @@ buildscript {
         // These repositories are only for Gradle plugins, put any other repositories in the repository block further below
         maven { url = 'https://maven.minecraftforge.net' }
         maven { url 'https://maven.parchmentmc.org' }
+        maven { url 'https://repo.spongepowered.org/maven'}
         mavenCentral()
     }
     dependencies {
         classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '5.1.+', changing: true
         classpath 'org.parchmentmc:librarian:1.+'
+        classpath "org.spongepowered:mixingradle:0.7-SNAPSHOT"
     }
 }
 // Only edit below this line, the above code adds and enables the necessary things for Forge to be setup.
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'org.parchmentmc.librarian.forgegradle'
 apply plugin: 'maven-publish'
+apply plugin: 'org.spongepowered.mixin'
 
 version = playerreset_version
 group = 'net.gargoyle.playerreset' // http://maven.apache.org/guides/mini/guide-naming-conventions.html
@@ -32,8 +35,11 @@ minecraft {
         client {
             workingDirectory project.file('run')
 
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'info'
+//            arg "-mixin.config=vaultfilters.mixin.json"
 
             property 'forge.enabledGameTestNamespaces', 'playerreset'
 
@@ -98,6 +104,11 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
     maven {
+        name = 'tterrag maven'
+        url = 'https://maven.tterrag.com/'
+    }
+
+    maven {
         // location of the maven that hosts JEI files since January 2023
         // location of the maven for Vazkii's mods
         name = "Jared's maven"
@@ -117,9 +128,30 @@ repositories {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.18.2-40.2.9'
     implementation fg.deobf("curse.maven:vault-hunters-official-mod-458203:5413414")
-    compileOnly fg.deobf("mezz.jei:jei-1.18.2:9.7.0.209:api")
-    runtimeOnly fg.deobf("mezz.jei:jei-1.18.2:9.7.0.209")
 
+    implementation fg.deobf("curse.maven:vault-integrations-867003:5401564")
+
+    implementation fg.deobf("com.simibubi.create:create-${create_minecraft_version}:${create_version}:slim") { transitive = false }
+    implementation fg.deobf("com.jozufozu.flywheel:flywheel-forge-${flywheel_minecraft_version}:${flywheel_version}")
+    implementation fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
+
+    implementation fg.deobf("curse.maven:curios-309927:4418032")
+    implementation fg.deobf("curse.maven:modular-routers-250294:3776175")
+    implementation fg.deobf("curse.maven:refined-storage-243076:4217424")
+    implementation fg.deobf("curse.maven:quark-243121:3840125")
+    implementation fg.deobf("curse.maven:applied-energistics-2-223794:4548560")
+    implementation fg.deobf("curse.maven:simple-storage-network-268495:3868680")
+    implementation fg.deobf("curse.maven:architects-palette-433862:4498424")
+    implementation fg.deobf("curse.maven:autoreglib-250363:3642382")
+    implementation fg.deobf("curse.maven:sophisticated-backpacks-vault-hunters-edition-696425:4287544")
+    implementation fg.deobf("curse.maven:configured-457570:4462832")
+    implementation fg.deobf("curse.maven:geckolib-388172:4181370")
+    implementation fg.deobf("curse.maven:citadel-331936:3783096")
+    implementation fg.deobf("curse.maven:jei-238222:4593548")
+    implementation fg.deobf("curse.maven:sophisticated-core-618298:4665730")
+    implementation fg.deobf("curse.maven:sophisticated-backpacks-422301:4637292")
+    implementation fg.deobf("curse.maven:storage-drawers-223852:3807626")
+//    runtimeOnly fg.deobf("curse.maven:jei-238222:5068328")
 }
 
 // Example for how to get properties into the manifest for reading at runtime.
@@ -132,10 +164,14 @@ jar {
                 "Implementation-Title"    : project.name,
                 "Implementation-Version"  : project.jar.archiveVersion,
                 "Implementation-Vendor"   : "gargoyle",
-                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                "TweakClass" : "org.spongepowered.asm.launch.MixinTweaker",
+                "TweakOrder": 0
         ])
     }
 }
+
+jar.finalizedBy('reobfJar')
 
 publishing {
     publications {
@@ -170,4 +206,10 @@ publishing {
             maven { url mavendir }
         }
     }
+}
+
+// Workaround for SpongePowered/MixinGradle#38
+afterEvaluate {
+    tasks.configureReobfTaskForReobfJar.mustRunAfter(tasks.compileJava)
+    tasks.configureReobfTaskForReobfJarJar.mustRunAfter(tasks.compileJava)
 }
