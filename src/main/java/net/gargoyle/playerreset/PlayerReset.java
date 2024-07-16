@@ -12,8 +12,7 @@ import org.slf4j.Logger;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod("playerreset")
-public class PlayerReset
-{
+public class PlayerReset {
     // Directly reference a slf4j logger
     private static final Logger LOGGER = LogUtils.getLogger();
 

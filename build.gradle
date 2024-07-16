@@ -39,7 +39,7 @@ minecraft {
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'info'
-//            arg "-mixin.config=vaultfilters.mixin.json"
+            arg "-mixin.config=playerreset.mixin.json"
 
             property 'forge.enabledGameTestNamespaces', 'playerreset'
 
@@ -151,7 +151,10 @@ dependencies {
     implementation fg.deobf("curse.maven:sophisticated-core-618298:4665730")
     implementation fg.deobf("curse.maven:sophisticated-backpacks-422301:4637292")
     implementation fg.deobf("curse.maven:storage-drawers-223852:3807626")
-//    runtimeOnly fg.deobf("curse.maven:jei-238222:5068328")
+
+    if (!Boolean.getBoolean('idea.sync.active')) {
+        annotationProcessor "org.spongepowered:mixin:${mixin_version}:processor"
+    }
 }
 
 // Example for how to get properties into the manifest for reading at runtime.
@@ -159,14 +162,15 @@ jar {
     manifest {
         attributes([
                 "Specification-Title"     : "playerreset",
-                "Specification-Vendor"    : "gargoyle",
+                "Specification-Vendor"    : "Gargoyle3333",
                 "Specification-Version"   : "1", // We are version 1 of ourselves
                 "Implementation-Title"    : project.name,
                 "Implementation-Version"  : project.jar.archiveVersion,
-                "Implementation-Vendor"   : "gargoyle",
+                "Implementation-Vendor"   : "Gargoyle3333",
                 "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
                 "TweakClass" : "org.spongepowered.asm.launch.MixinTweaker",
-                "TweakOrder": 0
+                "TweakOrder": 0,
+                "MixinConfigs" : "playerreset.mixin.json"
         ])
     }
 }
@@ -190,22 +194,8 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
 
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            artifactId = archivesBaseName
-
-            from components.java
-            fg.component(it)
-            jarJar.component(it)
-        }
-    }
-
-    repositories {
-        if (project.hasProperty('mavendir')) {
-            maven { url mavendir }
-        }
-    }
+mixin {
+    add sourceSets.main, "playerreset.mixin-refmap.json"
 }
 
 // Workaround for SpongePowered/MixinGradle#38

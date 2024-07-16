@@ -3,7 +3,7 @@
 TODO: add image for repo
 
 This mod adds a few simple commands for resetting vault data associated with a player.
-It uses a separate command, `reset_player`, instead of the built-in `reset` to avoid conflicting.
+It uses a separate command, `reset_player`, instead of the built-in `reset` to avoid conflicting commands.
 
 ## Installation
 
@@ -21,6 +21,9 @@ For a complete reset of **all** commands from the [Other Commands](#other-comman
 ```
 /the_vault reset_player all BobJones
 ```
+
+This will print a message to verify the command. Either click the response text or re-enter the command within 10 seconds.
+If you take longer than ten seconds to repeat the command, it will time out and the process will restart.
 
 This will not reset Minecraft achievements for the player. If you also want to reset player achievements, use this
 command:
@@ -63,12 +66,8 @@ The possible commands are as follows:
 - `altar_level`
 - `altar_recipe`
 - `ascension_title`
-- `achievements`
+- `proficiencies`
 
 ## License
 
 This project is MIT-licensed. Please see [LICENSE.txt](./LICENSE.txt) for more information.
-
-## TO DO
-
-- Verification for `all`: /execute as Jrowez run the_vault points_reset knowledge

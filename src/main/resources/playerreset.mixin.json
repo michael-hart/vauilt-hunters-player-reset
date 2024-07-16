@@ -1,0 +1,15 @@
+{
+  "package": "net.gargoyle.playerreset.mixin",
+  "minVersion": "0.8",
+  "compatibilityLevel": "JAVA_17",
+  "required": true,
+  "mixins": [
+    "DiscoveredAlchemyEffectsDataAccessor",
+    "DiscoveredWorkbenchModifiersDataAccessor",
+    "PlayerProficiencyDataAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "refmap": "playerreset.mixin-refmap.json"
+}

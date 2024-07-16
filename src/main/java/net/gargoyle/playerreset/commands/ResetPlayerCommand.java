@@ -3,37 +3,38 @@ package net.gargoyle.playerreset.commands;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import com.mojang.logging.LogUtils;
+import iskallia.vault.block.entity.VaultAltarTileEntity;
 import iskallia.vault.command.Command;
-import iskallia.vault.config.PlayerTitlesConfig;
 import iskallia.vault.core.net.ArrayBitBuffer;
 import iskallia.vault.core.vault.Vault;
 import iskallia.vault.core.vault.influence.VaultGod;
-import iskallia.vault.core.vault.stat.StatsCollector;
 import iskallia.vault.core.vault.stat.VaultSnapshot;
+import iskallia.vault.init.ModNetwork;
 import iskallia.vault.nbt.VListNBT;
-import iskallia.vault.skill.PlayerVaultStats;
-import iskallia.vault.util.AdvancementHelper;
+import iskallia.vault.network.message.UpdateTitlesDataMessage;
 import iskallia.vault.world.data.*;
+import net.gargoyle.playerreset.mixin.DiscoveredAlchemyEffectsDataAccessor;
+import net.gargoyle.playerreset.mixin.DiscoveredWorkbenchModifiersDataAccessor;
+import net.gargoyle.playerreset.mixin.PlayerProficiencyDataAccessor;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.BlockPos;
-import net.minecraft.data.advancements.AdvancementProvider;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.LongArrayTag;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextComponent;
-import net.minecraft.server.commands.AdvancementCommands;
 import net.minecraft.server.level.ServerPlayer;
-import org.checkerframework.checker.units.qual.C;
-import org.slf4j.Logger;
+import net.minecraftforge.network.NetworkDirection;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class ResetPlayerCommand extends Command {
+    public static final int ALL_RESET_TIMEOUT_TICKS = 10*20;  // 10 ticks
+    private static final Map<String, Integer> resetAllTracker = new HashMap<>();
+
     public String getName() {
         return "reset_player";
     }
@@ -147,9 +148,9 @@ public class ResetPlayerCommand extends Command {
                                         .executes(this::resetAscensionTitleCommand))
                 )
                 .then(
-                        Commands.literal("achievements")
+                        Commands.literal("proficiencies")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(this::resetAchievementsCommand))
+                                        .executes(this::resetProficienciesCommand))
                 )
                 ;
     }
@@ -159,8 +160,34 @@ public class ResetPlayerCommand extends Command {
     }
 
     private int resetAllCommand(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+
         ServerPlayer player = EntityArgument.getPlayer(context, "player");
         ServerPlayer sourcePlayer = ((CommandSourceStack)context.getSource()).getPlayerOrException();
+
+        String lookupKey = sourcePlayer.getName().getContents() + "_" + player.getName().getContents();
+        Integer lastRequest = resetAllTracker.get(lookupKey);
+        if (lastRequest == null || player.server.getTickCount() - lastRequest > ALL_RESET_TIMEOUT_TICKS) {
+            // Time out - enter into tracker and request confirmation
+            resetAllTracker.put(lookupKey, player.server.getTickCount());
+
+            ((CommandSourceStack)context.getSource())
+                    .sendSuccess(
+                            new TextComponent(
+                                    "WARNING: THIS CANNOT BE UNDONE! If you are absolutely sure you want to fully reset "
+                                            + player.getName().getContents()
+                                            + ", click here or run the command again.."
+                            )
+                            .setStyle(
+                                    Style.EMPTY
+                                            .withColor(ChatFormatting.RED)
+                                            .withBold(true)
+                                            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, context.getInput()))),
+                            true
+                    );
+            return 0;
+        }
+
+        resetAllTracker.remove(lookupKey);
 
         resetPlayerGodReputation(player);
         resetPlayerLevel(player);
@@ -173,7 +200,6 @@ public class ResetPlayerCommand extends Command {
         resetPlayerRelics(player);
         resetPlayerArmorModels(player);
         resetPlayerTrinkets(player);
-        resetPlayerArmorModels(player);
         resetPlayerPotionModifiers(player);
         resetPlayerParadox(player);
         resetPlayerQuests(player);
@@ -182,7 +208,7 @@ public class ResetPlayerCommand extends Command {
         resetPlayerAltarLevel(player);
         resetPlayerAltarRecipe(player);
         resetPlayerAscensionTitle(player);
-        resetPlayerAchievements(sourcePlayer, player);
+        resetPlayerProficiencies(player);
 
         TextComponent successMessage = new TextComponent(
                 String.format("Player %s fully reset!", player.getName().getContents())
@@ -382,12 +408,11 @@ public class ResetPlayerCommand extends Command {
         return 0;
     }
 
-    private int resetAchievementsCommand(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer sourcePlayer = ((CommandSourceStack)context.getSource()).getPlayerOrException();
-        ServerPlayer targetPlayer = EntityArgument.getPlayer(context, "player");
-        resetPlayerAchievements(sourcePlayer, targetPlayer);
+    private int resetProficienciesCommand(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = EntityArgument.getPlayer(context, "player");
+        resetPlayerProficiencies(player);
         TextComponent successMessage = new TextComponent(
-                String.format("Player %s achievements reset!", targetPlayer.getName().getContents())
+                String.format("Player %s proficiencies reset!", player.getName().getContents())
         );
         ((CommandSourceStack)context.getSource()).sendSuccess(successMessage, true);
         return 0;
@@ -431,65 +456,59 @@ public class ResetPlayerCommand extends Command {
 
     private void resetPlayerRelics(ServerPlayer player) {
         DiscoveredRelicsData relicsData = DiscoveredRelicsData.get(player.server);
-        relicsData.load(new CompoundTag());
+        relicsData.getDiscoveredRelics(player.getUUID()).clear();
         relicsData.setDirty(true);
     }
 
     private void resetPlayerArmorModels(ServerPlayer player) {
         DiscoveredModelsData modelsData = DiscoveredModelsData.get(player.server);
-        modelsData.load(new CompoundTag());
+        modelsData.getDiscoveredModels(player.getUUID()).clear();
         modelsData.setDirty(true);
         modelsData.syncTo(player);
     }
 
     private void resetPlayerTrinkets(ServerPlayer player) {
         DiscoveredTrinketsData trinketsData = DiscoveredTrinketsData.get(player.server);
-        trinketsData.load(new CompoundTag());
+        trinketsData.getDiscoveredTrinkets(player.getUUID()).clear();
         trinketsData.setDirty(true);
         trinketsData.syncTo(player);
     }
 
     private void resetPlayerWorkbenchModifiers(ServerPlayer player) {
         DiscoveredWorkbenchModifiersData modifiersData = DiscoveredWorkbenchModifiersData.get(player.server);
-        modifiersData.load(new CompoundTag());
+        ((DiscoveredWorkbenchModifiersDataAccessor) modifiersData).getDiscoveredCrafts().remove(player.getUUID());
         modifiersData.setDirty(true);
         modifiersData.syncTo(player);
     }
 
     private void resetPlayerPotionModifiers(ServerPlayer player) {
         DiscoveredAlchemyEffectsData alchemyData = DiscoveredAlchemyEffectsData.get(player.server);
-        alchemyData.load(new CompoundTag());
+        ((DiscoveredAlchemyEffectsDataAccessor) alchemyData).getDiscoveredEffects().remove(player.getUUID());
         alchemyData.setDirty(true);
         alchemyData.syncTo(player);
     }
 
     private void resetPlayerParadox(ServerPlayer player) {
         ParadoxCrystalData paradoxData = ParadoxCrystalData.get(player.server);
-        paradoxData.load(new CompoundTag());
+        paradoxData.getOrCreate(player.getUUID()).reset();
         paradoxData.setDirty(true);
     }
 
     private void resetPlayerGodReputation(ServerPlayer player) {
-        PlayerReputationData.addReputation(player.getUUID(), VaultGod.IDONA, 25);
-        PlayerReputationData.addReputation(player.getUUID(), VaultGod.IDONA, -25);
+        List<VaultGod> gods = Arrays.asList(VaultGod.IDONA, VaultGod.TENOS, VaultGod.VELARA, VaultGod.WENDARR);
+        gods.forEach(god -> {
+            int rep = PlayerReputationData.getReputation(player.getUUID(), god);
+            if (rep > 0) {
+                PlayerReputationData.addReputation(player.getUUID(), god, -rep);
+            }
+        });
     }
 
     private void resetPlayerQuests(ServerPlayer player) {
         QuestStatesData.get().getState(player).reset();
     }
 
-    private void resetPlayerAchievements(ServerPlayer sourcePlayer, ServerPlayer targetPlayer) {
-        // TODO see if this works via command block
-        sourcePlayer.sendMessage(
-                new TextComponent(
-                        String.format("/advancement revoke %s everything", targetPlayer.getName().getContents()
-                )),
-                sourcePlayer.getUUID()
-        );
-    }
-
     private void resetPlayerVaultHistory(ServerPlayer player) {
-        // TODO check this only removes the current player's history
         VaultSnapshots snapshots = VaultSnapshots.get(player.server);
 
         // Load snapshots and filter out those with player UUID
@@ -511,6 +530,12 @@ public class ResetPlayerCommand extends Command {
         snapshots.load(snapshotsNbt);
 
         snapshots.setDirty(true);
+
+        // Removing favorites:
+        // https://github.com/BONNePlayground/VaultHuntersExtraCommands/blob/d1de04f157d8b970e0978cdfb9b13d394ad38213/src/main/java/lv/id/bonne/vaulthunters/extracommands/commands/ClearCommand.java#L168-L171
+        PlayerHistoricFavoritesData favoritesData = PlayerHistoricFavoritesData.get(player.getLevel());
+        favoritesData.getPlayerMap().remove(player.getUUID());
+        favoritesData.setDirty();
     }
 
     private void resetPlayerBlackMarket(ServerPlayer player) {
@@ -525,19 +550,39 @@ public class ResetPlayerCommand extends Command {
     private void resetPlayerAltarRecipe(ServerPlayer player) {
         PlayerVaultAltarData altarData = PlayerVaultAltarData.get(player.getLevel());
         altarData.removeRecipe(player.getUUID());
+
+        // Removal of current recipe:
+        // https://github.com/BONNePlayground/VaultHuntersExtraCommands/blob/d1de04f157d8b970e0978cdfb9b13d394ad38213/src/main/java/lv/id/bonne/vaulthunters/extracommands/commands/ClearCommand.java#L121
+        List<BlockPos> altars = altarData.getAltars(player.getUUID());
+        altars.stream().
+                filter(pos -> player.getLevel().isLoaded(pos)).
+                map(pos -> player.getLevel().getBlockEntity(pos)).
+                filter(te -> te instanceof VaultAltarTileEntity).
+                map(te -> (VaultAltarTileEntity)te).
+                filter(altar -> (altar.getAltarState() == VaultAltarTileEntity.AltarState.ACCEPTING)).
+                forEach(altar -> altar.onRemoveInput(player.getUUID()));
+
+        altars.stream().toList().forEach(altar -> altarData.removeAltar(player.getUUID(), altar));
+
         altarData.setDirty();
     }
 
     private void resetPlayerAscensionTitle(ServerPlayer player) {
         PlayerTitlesData titlesData = PlayerTitlesData.get();
-        PlayerTitlesData.Entry entry = titlesData.entries.get(player.getUUID());
-        entry.setPrefix(null);
-        entry.setSuffix(null);
-        entry.setChanged(true);
-//        titlesData.entries.remove(player.getUUID());
+        titlesData.entries.remove(player.getUUID());
+        // Reset player title network packet
+        // https://github.com/BONNePlayground/VaultHuntersExtraCommands/blob/d1de04f157d8b970e0978cdfb9b13d394ad38213/src/main/java/lv/id/bonne/vaulthunters/extracommands/commands/ClearCommand.java#L295
+        ModNetwork.CHANNEL.sendTo(new UpdateTitlesDataMessage(titlesData.entries),
+                player.connection.connection,
+                NetworkDirection.PLAY_TO_CLIENT);
         titlesData.setDirty(true);
-//        PlayerTitlesData.setCustomName(player, "clearprefix", PlayerTitlesConfig.Affix.PREFIX);
-//        PlayerTitlesData.setCustomName(player, "clearsuffix", PlayerTitlesConfig.Affix.SUFFIX);
+    }
+
+    private void resetPlayerProficiencies(ServerPlayer player) {
+        PlayerProficiencyData profData = PlayerProficiencyData.get(player.server);
+        ((PlayerProficiencyDataAccessor) profData).getPlayerProficiencies().remove(player.getUUID());
+        profData.sendProficiencyInformation(player);
+        profData.setDirty(true);
     }
 
 }
